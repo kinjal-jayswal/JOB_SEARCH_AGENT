@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.DS_Store
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+seen_jobs.json
+jobs_found.json
+agent.log
