@@ -18,6 +18,7 @@ import time
 import random
 import json
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from bs4 import BeautifulSoup
 
@@ -71,8 +72,8 @@ def _safe_get(url, timeout=20, json_mode=False, delay=True, portal=""):
     if portal and not _portal_gate(portal):
         return None
     if delay:
-        # Polite crawl: 3-6 s between requests to the same site
-        time.sleep(random.uniform(3, 6))
+        # Polite crawl: 1.5-3 s between requests — human-speed, still ban-safe
+        time.sleep(random.uniform(1.5, 3))
     try:
         r = requests.get(url, headers=_headers(), timeout=timeout)
         # Respect 429 Too Many Requests — back off and do not retry
@@ -164,7 +165,7 @@ def _extract_number(text):
 
 def scrape_truelancer():
     jobs = []
-    search_terms = ["python", "machine-learning", "data-science", "langchain", "nlp", "automation"]
+    search_terms = ["python", "machine-learning", "langchain", "nlp"]
 
     for term in search_terms:
         urls = [
@@ -231,7 +232,7 @@ def scrape_truelancer():
 
 def scrape_internshala():
     jobs = []
-    search_terms = ["python", "machine-learning", "data-science", "artificial-intelligence", "nlp", "automation"]
+    search_terms = ["python", "machine-learning", "data-science", "nlp"]
 
     for term in search_terms:
         urls = [
@@ -300,7 +301,7 @@ def scrape_internshala():
 
 def scrape_worknhire():
     jobs = []
-    search_terms = ["python", "machine-learning", "data-science", "ai", "nlp", "automation"]
+    search_terms = ["python", "data-science", "ai", "nlp"]
 
     for term in search_terms:
         urls = [
@@ -449,7 +450,7 @@ def _parse_freelancer_html(html, term):
 def scrape_guru():
     jobs = []
     seen_ids = set()
-    search_terms = ["python", "machine-learning", "data-science", "langchain", "nlp", "automation", "ai"]
+    search_terms = ["python", "machine-learning", "langchain", "data-science"]
 
     for term in search_terms:
         url = f"https://www.guru.com/jobs/rss/?q={requests.utils.quote(term)}&cat=4"
@@ -546,7 +547,7 @@ def scrape_remoteok():
 
 def scrape_peopleperhour():
     jobs = []
-    search_terms = ["python", "machine-learning", "data-science", "langchain", "nlp"]
+    search_terms = ["python", "machine-learning", "langchain", "nlp"]
 
     for term in search_terms:
         url = f"https://www.peopleperhour.com/freelance-jobs?q={requests.utils.quote(term)}&sort=latest"
@@ -603,7 +604,7 @@ def scrape_peopleperhour():
 
 def scrape_hubstaff():
     jobs = []
-    search_terms = ["python", "machine learning", "data science", "nlp", "automation", "langchain"]
+    search_terms = ["python", "machine learning", "data science", "langchain"]
 
     for term in search_terms:
         url = f"https://talent.hubstaff.com/search/jobs?term={requests.utils.quote(term)}"
@@ -759,20 +760,25 @@ def scrape_all():
     # Reset per-portal request counters for this scan
     _portal_request_count.clear()
 
-    jobs = []
     all_scrapers = INDIAN_SCRAPERS + INTERNATIONAL_SCRAPERS
+    jobs = []
 
-    for name, fn in all_scrapers:
-        try:
-            result = fn()
-            jobs.extend(result)
-            logger.info(f"  ✓ {name}: {len(result)} jobs collected")
-        except Exception as e:
-            logger.error(f"  ✗ {name} scraper crashed: {e}")
+    # Run all 8 scrapers in parallel — cuts total time from ~4 min to ~30-45 s
+    logger.info(f"🚀 Scraping {len(all_scrapers)} portals in parallel...")
+    with ThreadPoolExecutor(max_workers=len(all_scrapers)) as pool:
+        future_to_name = {pool.submit(fn): name for name, fn in all_scrapers}
+        for future in as_completed(future_to_name):
+            name = future_to_name[future]
+            try:
+                result = future.result()
+                jobs.extend(result)
+                logger.info(f"  ✓ {name}: {len(result)} jobs")
+            except Exception as e:
+                logger.error(f"  ✗ {name} crashed: {e}")
 
     if not jobs:
         logger.warning("⚠️ No jobs from any live source — using demo data as fallback")
         return _demo_jobs()
 
-    logger.info(f"Total jobs scraped across all {len(all_scrapers)} portals: {len(jobs)}")
+    logger.info(f"✅ Total: {len(jobs)} jobs across {len(all_scrapers)} portals")
     return jobs

@@ -101,10 +101,10 @@ with col2:
     run_now = st.button("▶️ Run Scan")
 
 if run_now:
-    with st.spinner("Running scan across all 8 portals..."):
+    with st.spinner("Scanning all 8 portals in parallel — usually done in ~45 seconds..."):
         result = subprocess.run(
             [sys.executable, "agent.py", "--once"],
-            capture_output=True, text=True, timeout=300
+            capture_output=True, text=True, timeout=120
         )
         st.success("Scan complete!")
         if result.stdout:

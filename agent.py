@@ -154,17 +154,22 @@ def run_scan():
 # ─── ENTRY ───────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    once_mode = "--once" in sys.argv
+
     logger.info("🤖 JK Data Lab Job Search Agent starting...")
-    logger.info(f"   Scanning every {config.SCAN_INTERVAL_MINUTES} minutes")
+    if not once_mode:
+        logger.info(f"   Scanning every {config.SCAN_INTERVAL_MINUTES} minutes")
     logger.info(f"   WhatsApp: {config.WHATSAPP_NUMBER}")
     logger.info(f"   Telegram: {'✅ configured' if config.TELEGRAM_BOT_TOKEN else '❌ not set'}")
 
-    # Run once immediately
     run_scan()
 
-    # Then schedule
-    schedule.every(config.SCAN_INTERVAL_MINUTES).minutes.do(run_scan)
+    if once_mode:
+        logger.info("✅ --once mode: scan complete, exiting.")
+        sys.exit(0)
 
+    # Continuous mode: schedule and loop
+    schedule.every(config.SCAN_INTERVAL_MINUTES).minutes.do(run_scan)
     logger.info(f"⏰ Next scan in {config.SCAN_INTERVAL_MINUTES} minutes...")
 
     while True:
