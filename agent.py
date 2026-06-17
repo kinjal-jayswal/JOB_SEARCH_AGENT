@@ -56,8 +56,11 @@ def load_jobs() -> list:
 
 
 def save_jobs(jobs: list):
-    with open(config.JOBS_FILE, "w") as f:
+    # Atomic write: write to .tmp then rename so dashboard never reads a half-written file
+    tmp = config.JOBS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(jobs, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, config.JOBS_FILE)
 
 
 # ─── FILTERS ─────────────────────────────────────────────────

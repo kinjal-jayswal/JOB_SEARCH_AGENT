@@ -372,38 +372,57 @@ def scrape_worknhire():
 # ── 4. Freelancer.com (Public REST API + HTML fallback) ─────────
 
 def scrape_freelancer():
+    """
+    Freelancer.com: tries REST API first, falls back to HTML if API returns
+    success-but-empty (common when the endpoint silently filters results).
+    """
     jobs = []
-    # Single keywords only — multi-word phrases return 0 results from this API
+    seen_ids: set = set()
     search_terms = ["python", "langchain", "machine-learning", "nlp", "data-science"]
 
     for term in search_terms:
-        url = (
+        # Try API (no job_details — lighter, less likely to need auth)
+        api_url = (
             "https://www.freelancer.com/api/projects/0.1/projects/active/"
-            f"?query={requests.utils.quote(term)}"
-            "&job_details=true&limit=20&sort_field=submitdate&sort_order=desc"
+            f"?query={requests.utils.quote(term)}&limit=20"
+            "&sort_field=submitdate&sort_order=desc"
         )
-        data = _safe_get(url, json_mode=True)
+        data     = _safe_get(api_url, json_mode=True)
+        projects = []
 
-        # Check API-level errors (HTTP 200 but status != success)
-        if data and data.get("status") != "success":
-            logger.warning(f"Freelancer API error for '{term}': {str(data)[:120]}")
-            data = None
+        if data:
+            if data.get("status") != "success":
+                logger.info(f"Freelancer API non-success for '{term}': {str(data)[:100]}")
+            else:
+                projects = data.get("result", {}).get("projects", [])
+                logger.info(f"Freelancer API '{term}': {len(projects)} projects")
 
-        if not data:
-            logger.debug(f"Freelancer API failed for '{term}', trying HTML fallback")
-            html = _safe_get(f"https://www.freelancer.com/jobs/?keyword={requests.utils.quote(term)}")
-            if html:
-                jobs.extend(_parse_freelancer_html(html, term))
+        # Fall back to HTML whenever API gave 0 results
+        if not projects:
+            for html_url in [
+                f"https://www.freelancer.com/jobs/{requests.utils.quote(term)}/",
+                f"https://www.freelancer.com/jobs/?keyword={requests.utils.quote(term)}",
+            ]:
+                html = _safe_get(html_url)
+                if html:
+                    parsed = _parse_freelancer_html(html, term)
+                    if parsed:
+                        logger.info(f"Freelancer HTML '{html_url}': {len(parsed)} jobs")
+                        jobs.extend(j for j in parsed if j["id"] not in seen_ids)
+                        seen_ids.update(j["id"] for j in parsed)
+                        break
             continue
 
-        try:
-            projects = data.get("result", {}).get("projects", [])
-            logger.debug(f"Freelancer API '{term}': {len(projects)} projects")
-            for p in projects:
+        for p in projects:
+            try:
                 budget = p.get("budget", {})
                 budget_str = f"${budget.get('minimum', 0)}-${budget.get('maximum', 0)}"
+                job_id = f"fl_{p.get('id', abs(hash(p.get('title', ''))))}"
+                if job_id in seen_ids:
+                    continue
+                seen_ids.add(job_id)
                 jobs.append({
-                    "id": f"fl_{p.get('id', hash(p.get('title', '')))}",
+                    "id": job_id,
                     "platform": "Freelancer.com",
                     "title": p.get("title", ""),
                     "description": p.get("description", "")[:300],
@@ -413,8 +432,8 @@ def scrape_freelancer():
                     "found_at": datetime.now().isoformat(),
                     "keyword_matched": term,
                 })
-        except Exception as e:
-            logger.debug(f"Freelancer API parse: {e}")
+            except Exception as e:
+                logger.debug(f"Freelancer project parse: {e}")
 
     logger.info(f"Freelancer.com: {len(jobs)} jobs")
     return jobs
@@ -423,18 +442,28 @@ def scrape_freelancer():
 def _parse_freelancer_html(html, term):
     jobs = []
     soup = BeautifulSoup(html, "lxml")
-    for card in soup.select(".JobSearchCard-item")[:20]:
+    # Try multiple possible card selectors (site HTML changes over time)
+    cards = (
+        soup.select(".JobSearchCard-item") or
+        soup.select("[data-project-id]") or
+        soup.select(".project-card") or
+        soup.find_all("div", class_=re.compile(r"JobSearch|project.?card", re.I))
+    )
+    for card in cards[:20]:
         try:
-            title  = card.select_one(".JobSearchCard-primary-heading")
+            title  = (card.select_one(".JobSearchCard-primary-heading") or
+                      card.select_one("h2") or card.select_one("h3"))
             link   = card.select_one("a[href]")
-            desc   = card.select_one(".JobSearchCard-primary-description")
-            budget = card.select_one(".JobSearchCard-secondary-price")
+            desc   = (card.select_one(".JobSearchCard-primary-description") or
+                      card.select_one("p"))
+            budget = (card.select_one(".JobSearchCard-secondary-price") or
+                      card.select_one("[class*='price'],[class*='budget']"))
             t = title.get_text(strip=True) if title else ""
             if not t:
                 continue
-            l = "https://www.freelancer.com" + link["href"] if link else ""
+            l = "https://www.freelancer.com" + link["href"] if link and link["href"].startswith("/") else (link["href"] if link else "")
             jobs.append({
-                "id": f"fl_{hash(l or t)}",
+                "id": f"fl_{abs(hash(l or t))}",
                 "platform": "Freelancer.com",
                 "title": t,
                 "description": desc.get_text(strip=True)[:300] if desc else "",
@@ -701,6 +730,61 @@ def _demo_jobs():
     ]
 
 
+# ── 8. Jobicy (Free public API — no auth) ─────────────────────
+
+_JOBICY_TAGS = ["python", "machine-learning", "data-science", "nlp", "langchain"]
+_JOBICY_KW   = [
+    "python", "machine learning", "langchain", "nlp", "llm", "openai",
+    "data science", "data scientist", "data engineer", "deep learning",
+    "tensorflow", "pytorch", "fastapi", "streamlit", "huggingface",
+    "rag", "ai engineer", "ml engineer", "artificial intelligence",
+    "etl", "automation", "generative ai",
+]
+
+
+def scrape_jobicy():
+    jobs     = []
+    seen_ids: set = set()
+
+    for tag in _JOBICY_TAGS:
+        url  = f"https://jobicy.com/api/v2/remote-jobs?count=20&tag={requests.utils.quote(tag)}"
+        data = _safe_get(url, json_mode=True)
+        if not data:
+            continue
+
+        for item in data.get("jobs", []):
+            job_id = f"jcy_{item.get('id', abs(hash(item.get('url', ''))))}"
+            if job_id in seen_ids:
+                continue
+            seen_ids.add(job_id)
+
+            title  = item.get("jobTitle", "")
+            tags   = [t.lower() for t in item.get("jobIndustry", []) or []]
+            t_low  = title.lower()
+
+            if not any(kw in t_low or kw in " ".join(tags) for kw in _JOBICY_KW):
+                continue
+
+            desc   = BeautifulSoup(item.get("jobDescription", "") or "", "lxml").get_text()[:300].strip()
+            salary = item.get("annualSalaryMax") or item.get("annualSalaryMin") or "N/A"
+            budget = f"${salary:,}/yr" if isinstance(salary, (int, float)) else str(salary)
+
+            jobs.append({
+                "id": job_id,
+                "platform": "Jobicy",
+                "title": title,
+                "description": desc,
+                "budget": budget,
+                "client_rating": None,
+                "link": item.get("url", ""),
+                "found_at": datetime.now().isoformat(),
+                "keyword_matched": tag,
+            })
+
+    logger.info(f"Jobicy: {len(jobs)} jobs")
+    return jobs
+
+
 # ═══════════════════════════════════════════════════════════════
 #  MAIN ENTRY
 # ═══════════════════════════════════════════════════════════════
@@ -713,10 +797,11 @@ INDIAN_SCRAPERS = [
 
 # API/RSS sources — confirmed working
 INTERNATIONAL_SCRAPERS = [
-    ("Freelancer.com",   scrape_freelancer),     # Public REST API
+    ("Freelancer.com",   scrape_freelancer),     # Public REST API + HTML fallback
     ("RemoteOK",         scrape_remoteok),        # Public JSON API
     ("Remotive",         scrape_remotive),        # Free public API
     ("We Work Remotely", scrape_weworkremotely),  # RSS feed
+    ("Jobicy",           scrape_jobicy),          # Free public API — no auth
 ]
 
 

@@ -29,18 +29,17 @@ LOG_FILE  = "agent.log"
 
 # ── Platform config ───────────────────────────────────────────
 INDIAN_PLATFORMS = {"Truelancer", "Internshala"}
-INTL_PLATFORMS   = {"Freelancer.com", "RemoteOK", "Remotive", "We Work Remotely"}
+INTL_PLATFORMS   = {"Freelancer.com", "RemoteOK", "Remotive", "We Work Remotely", "Jobicy"}
 ALL_PLATFORMS    = sorted(INDIAN_PLATFORMS | INTL_PLATFORMS)
 
 PLATFORM_COLORS = {
-    # Indian (JS-rendered, return 0 without Selenium — kept for future)
     "Truelancer":       "#00c9a7",
     "Internshala":      "#00b4d8",
-    # International — confirmed working
     "Freelancer.com":   "#4f8bff",
     "RemoteOK":         "#22c55e",
     "Remotive":         "#a855f7",
     "We Work Remotely": "#f97316",
+    "Jobicy":           "#e11d48",
 }
 
 PLATFORM_FLAGS = {
@@ -50,6 +49,7 @@ PLATFORM_FLAGS = {
     "RemoteOK":         "🌐",
     "Remotive":         "🌐",
     "We Work Remotely": "🌐",
+    "Jobicy":           "🌐",
 }
 
 
@@ -109,10 +109,10 @@ with col2:
     run_now = st.button("▶️ Run Scan")
 
 if run_now:
-    with st.spinner("Scanning all 8 portals in parallel — usually done in ~45 seconds..."):
+    with st.spinner("Scanning portals in parallel — usually done in ~60 seconds..."):
         result = subprocess.run(
             [sys.executable, "agent.py", "--once"],
-            capture_output=True, text=True, timeout=120
+            capture_output=True, text=True, timeout=240
         )
         st.success("Scan complete!")
         if result.stdout:
