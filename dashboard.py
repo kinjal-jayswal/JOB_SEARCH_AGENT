@@ -27,29 +27,35 @@ if "notified" not in st.session_state:
 JOBS_FILE = "jobs_found.json"
 LOG_FILE  = "agent.log"
 
-# ── Platform config ───────────────────────────────────────────
-INDIAN_PLATFORMS = {"Truelancer", "Internshala"}
-INTL_PLATFORMS   = {"Freelancer.com", "RemoteOK", "Remotive", "We Work Remotely", "Jobicy"}
+# ── Platform config (derived from scraper lists — stays in sync automatically) ─
+from scraper import INDIAN_SCRAPERS, INTERNATIONAL_SCRAPERS
+
+INDIAN_PLATFORMS = {name for name, _ in INDIAN_SCRAPERS}
+INTL_PLATFORMS   = {name for name, _ in INTERNATIONAL_SCRAPERS}
 ALL_PLATFORMS    = sorted(INDIAN_PLATFORMS | INTL_PLATFORMS)
 
 PLATFORM_COLORS = {
-    "Truelancer":       "#00c9a7",
-    "Internshala":      "#00b4d8",
-    "Freelancer.com":   "#4f8bff",
-    "RemoteOK":         "#22c55e",
-    "Remotive":         "#a855f7",
-    "We Work Remotely": "#f97316",
-    "Jobicy":           "#e11d48",
+    "Truelancer":         "#00c9a7",
+    "Internshala":        "#00b4d8",
+    "Freelancer.com":     "#4f8bff",
+    "Guru.com":           "#f59e0b",
+    "RemoteOK":           "#22c55e",
+    "Remotive":           "#a855f7",
+    "We Work Remotely":   "#f97316",
+    "Jobicy":             "#e11d48",
+    "PeoplePerHour":      "#06b6d4",
 }
 
 PLATFORM_FLAGS = {
-    "Truelancer":       "🇮🇳",
-    "Internshala":      "🇮🇳",
-    "Freelancer.com":   "🌐",
-    "RemoteOK":         "🌐",
-    "Remotive":         "🌐",
-    "We Work Remotely": "🌐",
-    "Jobicy":           "🌐",
+    "Truelancer":         "🇮🇳",
+    "Internshala":        "🇮🇳",
+    "Freelancer.com":     "🌐",
+    "Guru.com":           "🌐",
+    "RemoteOK":           "🌐",
+    "Remotive":           "🌐",
+    "We Work Remotely":   "🌐",
+    "Jobicy":             "🌐",
+    "PeoplePerHour":      "🌐",
 }
 
 
@@ -92,10 +98,14 @@ st.markdown("""
 
 # ── Header ────────────────────────────────────────────────────
 
+_indian_names = " · ".join(sorted(INDIAN_PLATFORMS))
+_intl_names   = " · ".join(sorted(INTL_PLATFORMS))
+
 st.title("🤖 JK Data Lab — Job Search Agent")
 st.caption(
     f"Owner: Kinjal Jayantkumar Jayswal | "
-    f"Portals: 3 Indian 🇮🇳 + 5 International 🌐 | "
+    f"Portals: {len(INDIAN_PLATFORMS)} Indian 🇮🇳 ({_indian_names}) + "
+    f"{len(INTL_PLATFORMS)} International 🌐 ({_intl_names}) | "
     f"Last refreshed: {datetime.now().strftime('%H:%M:%S')}"
 )
 
