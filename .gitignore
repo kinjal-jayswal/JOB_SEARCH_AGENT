@@ -11,3 +11,5 @@ build/
 seen_jobs.json
 jobs_found.json
 agent.log
+PyWhatKit_DB.txt
+.claude/settings.local.json
