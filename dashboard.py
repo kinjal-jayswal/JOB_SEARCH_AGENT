@@ -111,17 +111,32 @@ st.caption(
 
 # ── Controls ──────────────────────────────────────────────────
 
-col1, col2, col3 = st.columns([1, 1, 4])
+col1, col2, col3, col4 = st.columns([1, 1, 1.4, 1.4])
 with col1:
     if st.button("🔄 Refresh"):
         st.rerun()
 with col2:
     run_now = st.button("▶️ Run Scan")
+with col3:
+    salary_min = st.number_input(
+        "Min expected budget", min_value=0, value=0, step=500,
+        help="0 = no minimum. Budgets are mixed currency (₹/$) across platforms — treated as a loose guide, not exact.",
+    )
+with col4:
+    salary_max = st.number_input(
+        "Max expected budget", min_value=0, value=0, step=500,
+        help="0 = no maximum. Applied as an AI scoring hint, not a hard filter.",
+    )
 
 if run_now:
+    cmd = [sys.executable, "agent.py", "--once"]
+    if salary_min:
+        cmd += ["--salary-min", str(salary_min)]
+    if salary_max:
+        cmd += ["--salary-max", str(salary_max)]
     with st.spinner("Scanning portals in parallel — usually done in ~60 seconds..."):
         result = subprocess.run(
-            [sys.executable, "agent.py", "--once"],
+            cmd,
             capture_output=True, text=True, timeout=240
         )
         st.success("Scan complete!")

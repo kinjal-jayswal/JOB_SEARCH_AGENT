@@ -98,9 +98,11 @@ def _parse_budget(s: str) -> float | None:
 
 # ─── CORE SCAN ───────────────────────────────────────────────
 
-def run_scan():
+def run_scan(salary_min: float | None = None, salary_max: float | None = None):
     logger.info("=" * 60)
     logger.info(f"🔍 Scan started — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    if salary_min or salary_max:
+        logger.info(f"   Expected budget range: {salary_min or 'no min'} – {salary_max or 'no max'}")
 
     seen = load_seen()
     existing_jobs = load_jobs()
@@ -132,7 +134,7 @@ def run_scan():
         return
 
     # 5. AI scoring — score ALL filtered jobs
-    scored = ai_score_jobs(quality_filtered)
+    scored = ai_score_jobs(quality_filtered, salary_min, salary_max)
     apply_count = sum(1 for j in scored if j.get("ai_apply", False))
     logger.info(f"AI scored {len(scored)} jobs — {apply_count} recommended to apply")
 
@@ -152,8 +154,20 @@ def run_scan():
 
 # ─── ENTRY ───────────────────────────────────────────────────
 
+def _arg_value(flag: str) -> str | None:
+    if flag in sys.argv:
+        idx = sys.argv.index(flag)
+        if idx + 1 < len(sys.argv):
+            return sys.argv[idx + 1]
+    return None
+
+
 if __name__ == "__main__":
     once_mode = "--once" in sys.argv
+    salary_min = _arg_value("--salary-min")
+    salary_max = _arg_value("--salary-max")
+    salary_min = float(salary_min) if salary_min else None
+    salary_max = float(salary_max) if salary_max else None
 
     logger.info("🤖 JK Data Lab Job Search Agent starting...")
     if not once_mode:
@@ -161,14 +175,14 @@ if __name__ == "__main__":
     logger.info(f"   WhatsApp: {config.WHATSAPP_NUMBER}")
     logger.info(f"   Telegram: {'✅ configured' if config.TELEGRAM_BOT_TOKEN else '❌ not set'}")
 
-    run_scan()
+    run_scan(salary_min, salary_max)
 
     if once_mode:
         logger.info("✅ --once mode: scan complete, exiting.")
         sys.exit(0)
 
     # Continuous mode: schedule and loop
-    schedule.every(config.SCAN_INTERVAL_MINUTES).minutes.do(run_scan)
+    schedule.every(config.SCAN_INTERVAL_MINUTES).minutes.do(run_scan, salary_min, salary_max)
     logger.info(f"⏰ Next scan in {config.SCAN_INTERVAL_MINUTES} minutes...")
 
     while True:
